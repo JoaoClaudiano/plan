@@ -3,8 +3,8 @@ name: Atualizar dados da planilha
 on:
   push:
     paths:
-      - 'planilha.xlsx'   # Executa sempre que a planilha for modificada
-  workflow_dispatch:       # Permite executar manualmente
+      - 'planilha.xlsx'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,10 +25,21 @@ jobs:
       - name: Executar script de extração
         run: python extrair_dados.py
 
-      - name: Commitar e push do dados.json atualizado
+      - name: Listar arquivos gerados (debug)
+        run: ls -la
+
+      - name: Verificar se dados.json foi criado
+        run: |
+          if [ -f dados.json ]; then
+            echo "✅ dados.json encontrado!"
+          else
+            echo "❌ ERRO: dados.json não foi criado!"
+            exit 1
+          fi
+
+      - name: Commitar e push do dados.json
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add dados.json
-          git diff --quiet && git diff --staged --quiet || git commit -m "Atualiza dados.json automaticamente"
-          git push
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Atualiza dados.json automaticamente" && git push)
