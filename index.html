@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orçamento Sienge</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        input[type=number] { width: 80px; padding: 5px; }
+        .totals { background: #e7f3e7; padding: 15px; border-radius: 5px; margin-top: 20px; font-size: 1.2em; }
+        .totals p { margin: 5px 0; }
+        .bdi { color: #d9534f; font-weight: bold; }
+        .loading { text-align: center; font-size: 1.5em; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Orçamento de Obras – Sienge Plataforma</h1>
+        <div id="loading" class="loading">Carregando dados...</div>
+        <div id="app" style="display:none;">
+            <h2>Itens do Orçamento</h2>
+            <table id="tabela-itens">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Código SINAPI</th>
+                        <th>Descrição</th>
+                        <th>Unid.</th>
+                        <th>Quantidade</th>
+                        <th>Custo Material (R$)</th>
+                        <th>Custo Mão de Obra (R$)</th>
+                        <th>Custo Total (R$)</th>
+                    </tr>
+                </thead>
+                <tbody id="corpo-tabela">
+                </tbody>
+            </table>
+
+            <div class="totals">
+                <h3>Totais</h3>
+                <p><strong>Total de Materiais:</strong> <span id="total-material">0,00</span></p>
+                <p><strong>Total de Mão de Obra:</strong> <span id="total-mo">0,00</span></p>
+                <p><strong>Total sem BDI:</strong> <span id="total-sem-bdi">0,00</span></p>
+                <p><strong>BDI:</strong> <span id="valor-bdi">0,00</span></p>
+                <p><strong>Encargos Sociais:</strong> <span id="valor-encargos">0,00</span></p>
+                <p><strong>Total Geral com BDI:</strong> <span id="total-geral">0,00</span></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Carregar dados do JSON
+        let dados = null;
+        let itens = []; // lista de itens com valores das composições
+
+        fetch('dados.json')
+            .then(response => response.json())
+            .then(data => {
+                dados = data;
+                prepararItens();
+                renderizarTabela();
+                calcularTotais();
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('app').style.display = 'block';
+            })
+            .catch(error => {
+                document.getElementById('loading').innerHTML = 'Erro ao carregar dados. Verifique o arquivo dados.json.';
+                console.error(error);
+            });
+
+        // Combinar itens do orçamento com os custos das composições
+        function prepararItens() {
+            const composicoesMap = new Map();
+            dados.composicoes.forEach(c => composicoesMap.set(c.codigo, c));
+
+            itens = dados.itens_orcamento.map(item => {
+                const comp = composicoesMap.get(item.codigo) || { custo_material: 0, custo_mao_obra: 0, unidade: item.unidade };
+                return {
+                    ...item,
+                    custo_material_unit: comp.custo_material,
+                    custo_mao_obra_unit: comp.custo_mao_obra,
+                    custo_total_unit: comp.custo_material + comp.custo_mao_obra
+                };
+            });
+        }
+
+        // Renderizar tabela
+        function renderizarTabela() {
+            const tbody = document.getElementById('corpo-tabela');
+            tbody.innerHTML = '';
+            itens.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${item.item || '-'}</td>
+                    <td>${item.codigo}</td>
+                    <td>${item.descricao}</td>
+                    <td>${item.unidade}</td>
+                    <td><input type="number" value="${item.quantidade}" step="0.01" min="0" data-index="${index}" onchange="atualizarQuantidade(this)"></td>
+                    <td>${(item.custo_material_unit * item.quantidade).toFixed(2)}</td>
+                    <td>${(item.custo_mao_obra_unit * item.quantidade).toFixed(2)}</td>
+                    <td>${(item.custo_total_unit * item.quantidade).toFixed(2)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Atualizar quantidade e recalcular
+        window.atualizarQuantidade = function(input) {
+            const index = input.dataset.index;
+            const novaQtd = parseFloat(input.value) || 0;
+            itens[index].quantidade = novaQtd;
+            // Re-renderizar a linha (ou atualizar células específicas)
+            const row = input.closest('tr');
+            row.cells[5].innerText = (itens[index].custo_material_unit * novaQtd).toFixed(2);
+            row.cells[6].innerText = (itens[index].custo_mao_obra_unit * novaQtd).toFixed(2);
+            row.cells[7].innerText = (itens[index].custo_total_unit * novaQtd).toFixed(2);
+            calcularTotais();
+        };
+
+        // Calcular totais
+        function calcularTotais() {
+            let totalMaterial = 0, totalMO = 0, totalSemBDI = 0;
+            itens.forEach(item => {
+                totalMaterial += item.custo_material_unit * item.quantidade;
+                totalMO += item.custo_mao_obra_unit * item.quantidade;
+            });
+            totalSemBDI = totalMaterial + totalMO;
+
+            // Parâmetros BDI (fórmula da planilha)
+            const p = dados.parametros;
+            const bdiFactor = ((1 + p.adm_central) * (1 + p.despesas_fin) * (1 + p.garantia) * (1 + p.lucro) /
+                              (1 - (p.pis + p.cofins + p.iss))) - 1;
+            const bdiValor = totalSemBDI * bdiFactor;
+            const encargos = totalMO * p.encargos_sociais;
+            const totalGeral = totalSemBDI + bdiValor; // + encargos? Na planilha LS é encargos? Vamos seguir a planilha: LS é separado, mas não incluso no total? A planilha soma LS? Verificar: em 'sin', o total final é M.O + Outros + LS? Vamos simplificar: total com BDI + encargos? Na aba 'sin', o total final é =SUM(M607:M609) onde M607=Total (MO+Outros?), M608=LS, M609=BDI. Então total final = (total sem BDI) + LS + BDI. LS é encargos? Sim, LS (Lei Social) = encargos. Então faremos totalGeral = totalSemBDI + encargos + bdiValor.
+
+            const totalFinal = totalSemBDI + encargos + bdiValor;
+
+            document.getElementById('total-material').innerText = totalMaterial.toFixed(2);
+            document.getElementById('total-mo').innerText = totalMO.toFixed(2);
+            document.getElementById('total-sem-bdi').innerText = totalSemBDI.toFixed(2);
+            document.getElementById('valor-bdi').innerText = bdiValor.toFixed(2);
+            document.getElementById('valor-encargos').innerText = encargos.toFixed(2);
+            document.getElementById('total-geral').innerText = totalFinal.toFixed(2);
+        }
+    </script>
+</body>
+</html>
